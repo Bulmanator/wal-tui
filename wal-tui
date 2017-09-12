@@ -1,0 +1,285 @@
+#!/usr/bin/env python3
+
+# Credit goes to dylanaraps and pywal for colour generation and sorting
+# Found here: https://github.com/dylanaraps/pywal
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import xml.etree.cElementTree as ET
+
+def hex_to_rgb(colour):
+    return tuple(bytes.fromhex(colour.strip("#")))
+
+def rgb_to_hex(colour):
+    return "#%02x%02x%02x" % (*colour,)
+
+def darken_colour(colour, amount):
+    colour = [int(col * (1 - amount)) for col in hex_to_rgb(colour)]
+    return rgb_to_hex(colour)
+
+def lighten_colour(colour, amount):
+    colour = [int(col + (255 - col) * amount) for col in hex_to_rgb(colour)]
+    return rgb_to_hex(colour)
+
+def rgb_to_argb(colour, alpha):
+    return "#{0}{1}".format(alpha, colour.strip("#"))
+
+def magick(colour_count, image):
+    if shutil.which("magick"):
+        magick_command = ["magick", "convert"]
+    else:
+        magick_command = ["convert"]
+
+    colours = subprocess.Popen([*magick_command, image, "-resize", "25%",
+                                "+dither", "-colors", str(colour_count),
+                                "-unique-colors", "txt:-"],
+                                stdout=subprocess.PIPE)
+
+    return colours.stdout.readlines()
+
+
+def gen_colours(image, colour_count):
+    if not shutil.which("convert"):
+        print("Error: imagemagick is not found, exiting...")
+        sys.exit(1)
+
+    raw_colours = magick(colour_count, image)
+
+    index = 0
+    while len(raw_colours) - 1 < colour_count:
+        index += 1
+        raw_colours = magick(colour_count + index, image)
+
+        print("Colours: Imagemagick couldn't generate a proper palette")
+
+        if index > 20:
+            print("Colours: Imagemagick couldn't generate a suitable scheme")
+            sys.exit(1)
+
+    del raw_colours[0]
+
+    return [re.search("#.{6}", str(col)).group(0) for col in raw_colours]
+
+
+def sort_colours(image, colours):
+    raw_colours = colours[:1] + colours[9:] + colours[8:]
+    
+    if raw_colours[0][1] not in ["0", "1", "2"]:
+        raw_colours[0] = darken_colour(raw_colours[0], 0.25)
+    
+    raw_colours[8] = lighten_colour(raw_colours[0], 0.40)
+    
+    colours = {}
+    colours["wallpaper"] = image
+    colours["special"] = {}
+    colours["colours"] = {}
+    
+    colours["special"]["background"] = raw_colours[0]
+    colours["special"]["foreground"] = raw_colours[15]
+    colours["special"]["cursor"] = raw_colours[15]
+    
+    for index, colour in enumerate(raw_colours):
+        colours["colours"]["colour%s" % index] = colour
+        
+    return colours
+
+arguments = {
+    "-c" : True,
+    "-s" : "true", "-t" : "false", "-a" : "true", "-g" : "true", "-l" : "true",
+    "-n" : "true", "-f" : "[%app] %ttl - %txt"     
+};
+
+def process_args(args):
+    if "-h" in args:
+        help()
+
+    for index, arg in enumerate(args):
+        if arg not in arguments.keys():
+            continue
+        
+        value = "false"
+        if arg == "-f":
+            if (index + 1) == len(args):
+                help()
+            else:
+                value = args[index + 1]
+        elif arg == "-c":
+            value = False
+        elif arg == "-t":
+            value = "true"
+
+        arguments[arg] = value
+
+
+
+def help():
+    print("Usage: tui-wal [-h] [-c] [-s] [-t] [-a] [-g] [-l]\n\t[-n][-f \"format\"] \"/path/to/image\"\n")
+    print("tui-wal generate colour schemes for T-UI Launcher\n")
+    print("Optional Arguments:")
+    print("  -h: Show this message")
+    print("  -c: Don't generate colours.xml\n")
+    print("Suggestions Configuration:")
+    print("  -s: Don't show suggestions")
+    print("  -t: Enable transparent suggestions")
+    print("  -a: Don't suggest aliases")
+    print("  -g: Don't suggest app groups")
+    print("  -l: Disable click to launch suggestions\n")
+    print("Notifications Configuration:")
+    print("  -n: Don't show notifications")
+    print("  -f \"format\": The format of notifications (Default: \"[%app] %ttl - %txt\")")
+    print("\t       Formatting options:")
+    print("\t       - %app: Application name")
+    print("\t       - %pkg: Package name")
+    print("\t       - %ttl: Notification title")
+    print("\t       - %txt: Notification text")
+    sys.exit(2)
+
+args = sys.argv
+process_args(args)
+
+image = args[len(args) - 1]
+file_types = (".png", ".jpeg", ".jpg", ".jpe", ".gif")
+if not os.path.isfile(image) or len(args) - 1 == 0:
+    print("No image supplied!")
+    help()
+
+valid = False
+for t in file_types:
+    if image.endswith(t):
+        valid = True
+        break
+
+if not valid:
+    print("{0} was not a valid image!".format(image))
+    help()
+
+print("Using Image: %s" % image)
+print("Generating Colours... ", end='')
+colours = gen_colours(image, 16)
+colours = sort_colours(image, colours)
+print("Done!")
+
+theme = {
+    "input_color" : "acolour7", "output_color" : "acolour7",
+    "bg_color" : "acolour0", "device_color" : "acolour1",
+    "ram_color" : "acolour3", "time_color" : "colour2",
+    "storage_color" : "colour4", "toolbar_color" : "acolour3",
+    "toolbar_bg" : "acolour6", "enter_color" : "acolour7",
+    "overlay_color" : "#9B000000", "hint_color" : "colour7",
+    "battery_color_high" : "colour7", "battery_color_medium" : "colour6",
+    "battery_color_low" : "colour5", "alias_content_color" : "colour6",
+    "statusbar_color" : "colour0", "navigationbar_color" : "colour0",
+    "app_installed_color" : "colour6", "app_uninstalled_color" : "colour6"    
+}
+
+suggestions = {
+    "default_text_color" : "colour7", "default_bg_color" : "colour0",
+    "apps_text_color" : "colour7", "apps_bg_color" : "colour0",
+    "alias_text_color" : "colour7", "alias_bg_color" : "colour4",
+    "cmd_text_color" : "colour7", "cmd_bg_color" : "colour4",
+    "song_text_color" : "colour7", "song_bg_color" : "colour0",
+    "contact_text_color" : "colour7", "contact_bg_color" : "colour0",
+    "file_text_color" : "colour7", "file_bg_color" : "colour0",
+}
+
+
+
+# Theme XML
+print("Generating theme.xml... ", end='')
+
+root = ET.Element("THEME")
+# For formatting purposes
+root.text = "\n"
+root.tail = "\n"
+
+for key in theme.keys():
+    col = theme[key]
+    # Add the alpha components to the colours which require it
+    if "a" in col:
+        value = colours["colours"][col[1:]]
+        if key == "toolbar_bg":
+            ET.SubElement(root, key, value=rgb_to_argb(value, "00")).tail = "\n"
+        else:
+            ET.SubElement(root, key, value=rgb_to_argb(value, "FF")).tail = "\n"
+    else:
+        if key != "overlay_color":
+            value = colours["colours"][col]
+            ET.SubElement(root, key, value=value).tail = "\n"
+        else:
+            ET.SubElement(root, key, value=theme[key]).tail = "\n"
+
+# Create the XML tree and write to file
+tree = ET.ElementTree(root)
+tree.write("t-ui/theme.xml", encoding="UTF-8", xml_declaration=True)
+
+print("Done!")
+
+arguments = list(arguments.values())
+
+# Suggestions XML
+print("Generating suggestions.xml... ", end='')
+
+root = ET.Element("SUGGESTIONS")
+root.text = "\n"
+root.tail = "\n"
+
+# TODO(James): Allow for these to be passed as arguments
+ET.SubElement(root, "show_suggestions", value=arguments[1]).tail = "\n"
+ET.SubElement(root, "transparent_suggestions", value=arguments[2]).tail = "\n"
+ET.SubElement(root, "suggest_alias_default", value=arguments[3]).tail = "\n"
+ET.SubElement(root, "suggest_appgp_default", value=arguments[4]).tail = "\n"
+ET.SubElement(root, "click_to_launch", value=arguments[5]).tail = "\n"
+
+for key in suggestions.keys():
+    col = suggestions[key]
+    if "default" not in key and "text_color" in key:
+        ET.SubElement(root, key, value="").tail = "\n"
+    else:
+        ET.SubElement(root, key, value=colours["colours"][col]).tail = "\n"
+
+tree = ET.ElementTree(root)
+tree.write("t-ui/suggestions.xml", encoding="UTF-8", xml_declaration=True)
+
+print("Done!")
+
+# Notifications XML
+print("Generating notifications.xml... ", end='')
+
+root = ET.Element("NOTIFICATIONS")
+root.text = "\n"
+root.tail = "\n"
+
+# TODO(James): Also allow these to be arguments
+ET.SubElement(root, "show_notifications", value=arguments[6]).tail = "\n"
+ET.SubElement(root, "app_notification_enabled_default", value=arguments[6]).tail = "\n"
+ET.SubElement(root, "notification_format", value=arguments[7]).tail = "\n"
+
+ET.SubElement(root, "default_notification_color", value=colours["colours"]["colour7"]).tail = "\n"
+
+tree = ET.ElementTree(root)
+tree.write("t-ui/notifications.xml", encoding="UTF-8", xml_declaration=True)
+
+print("Done!")
+
+if arguments[0]:
+    # Colours XML
+    print("Generating colours.xml... ", end='')
+
+    root = ET.Element("COLOURS")
+    root.text = "\n"
+    root.tail = "\n"
+
+    for key in colours["colours"].keys():
+        col = colours["colours"][key]
+        ET.SubElement(root, key, value=col).tail = "\n"
+    
+    tree = ET.ElementTree(root)
+    tree.write("t-ui/colours.xml", encoding="UTF-8", xml_declaration=True)
+    print("Done!")
+
+print("Generation Complete!\n\nCopy theme.xml, suggestions.xml and notifications.xml to your t-ui folder")
+if arguments[0]:
+    print("Optionally, colours.xml can also be copied to reference generated colours")
