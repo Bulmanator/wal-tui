@@ -42,4 +42,11 @@ Notifications Configuration:
 	             - %ttl: Notification title
 	             - %txt: Notification text
  ```  
- Running the script will output a theme.xml, suggestions.xml and a notifications.xml file which can then be copied to the t-ui folder on your device. Optionally, a colours.xml can be generated to reference the colours generated
+Running the script will output a theme.xml, suggestions.xml and a notifications.xml file which can then be copied to the t-ui folder on your device. Optionally, a colours.xml can be generated to reference the colours generated.  
+  
+**Disclaimer: This will overwrite your notification preferences and set them back to default, I plan on working on this issue. I recommend backing up at least your notifications.xml, if not all of your configuration xml files, before using this script.**
+ 
+### Termux
+The script can be run via termux on some devices. You can install the required packages with `pkg install python` and `pkg install imagemagick`. You will need to edit the shebang from `#!/usr/bin/env python3` to `#!/data/data/com.termux/files/usr/bin/env python3` and then you can then copy the scrpit to /data/data/com.termux/files/usr/bin so it can be run from anywhere. I plan on creating a termux specific version which will automatically overwrite the files in your t-ui folders so all you need to do is run the script and restart T-UI.  
+  
+The convert command from imagemagick can throw up a 'Segmentation Fault' while choosing the colours meaning it will not work on all devices. See here for more details: [Imagemagick convert segfaults #1314](https://github.com/termux/termux-packages/issues/1314).
