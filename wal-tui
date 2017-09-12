@@ -156,6 +156,11 @@ if not valid:
     print("{0} was not a valid image!".format(image))
     help()
 
+# Make sure t-ui folder exists
+if not os.path.exists("{0}/t-ui".format(os.getcwd())):
+    print("Creating t-ui folder...")
+    os.mkdir("t-ui")
+
 print("Using Image: %s" % image)
 print("Generating Colours... ", end='')
 colours = gen_colours(image, 16)
